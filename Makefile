@@ -1,6 +1,6 @@
 all: build
 
-PREFIX?=registry.aliyuncs.com/acs
+PREFIX?=10.19.64.205:4443
 FLAGS=
 ARCH?=amd64
 ALL_ARCHITECTURES=amd64 arm arm64 ppc64le s390x
@@ -35,7 +35,8 @@ test-unit-cov: clean sanitize build
 	hack/coverage.sh
 
 docker-container:
-	docker build --pull -t $(PREFIX)/kube-eventer-$(ARCH):$(VERSION)-$(GIT_COMMIT)-aliyun -f deploy/Dockerfile .
+	docker build -t $(PREFIX)/kube-eventer/kube-eventer-$(ARCH):v1.2.1 -f deploy/Dockerfile .
+	docker push 10.19.64.205:4443/kube-eventer/kube-eventer-amd64:v1.2.1
 
 clean:
 	rm -f kube-eventer

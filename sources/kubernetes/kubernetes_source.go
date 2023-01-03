@@ -15,6 +15,7 @@
 package kubernetes
 
 import (
+	"context"
 	"net/url"
 	"time"
 
@@ -74,6 +75,7 @@ type KubernetesEventSource struct {
 	stopChannel chan struct{}
 
 	eventClient kubev1core.EventInterface
+	ctx         context.Context
 }
 
 func (this *KubernetesEventSource) GetNewEvents() *core.EventBatch {
@@ -105,7 +107,7 @@ event_loop:
 func (this *KubernetesEventSource) watch() {
 	// Outer loop, for reconnections.
 	for {
-		events, err := this.eventClient.List(metav1.ListOptions{Limit: 1})
+		events, err := this.eventClient.List(this.ctx, metav1.ListOptions{Limit: 1})
 		if err != nil {
 			klog.Errorf("Failed to load events: %v", err)
 			time.Sleep(time.Second)
@@ -116,7 +118,7 @@ func (this *KubernetesEventSource) watch() {
 
 		resourceVersion := events.ResourceVersion
 
-		watcher, err := this.eventClient.Watch(
+		watcher, err := this.eventClient.Watch(this.ctx,
 			metav1.ListOptions{
 				Watch:           true,
 				ResourceVersion: resourceVersion})
@@ -191,6 +193,7 @@ func NewKubernetesSource(uri *url.URL) (*KubernetesEventSource, error) {
 		localEventsBuffer: make(chan *kubeapi.Event, LocalEventsBufferSize),
 		stopChannel:       make(chan struct{}),
 		eventClient:       eventClient,
+		ctx:               context.TODO(),
 	}
 	go result.watch()
 	return &result, nil

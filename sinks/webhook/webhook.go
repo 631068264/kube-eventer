@@ -2,19 +2,17 @@ package webhook
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
 	"text/template"
-	"time"
 
 	"github.com/AliyunContainerService/kube-eventer/common/filters"
-	"github.com/AliyunContainerService/kube-eventer/common/kubernetes"
 	"github.com/AliyunContainerService/kube-eventer/core"
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 )
 
@@ -25,15 +23,15 @@ const (
 )
 
 var (
-	// body template of event
-	defaultBodyTemplate = `
-{
-	"EventType": "{{ .Type }}",
-	"EventKind": "{{ .InvolvedObject.Kind }}",
-	"EventReason": "{{ .Reason }}",
-	"EventTime": "{{ .LastTimestamp }}",
-	"EventMessage": "{{ .Message }}"
-}`
+// body template of event
+//	defaultBodyTemplate = `
+//{
+//	"EventType": "{{ .Type }}",
+//	"EventKind": "{{ .InvolvedObject.Kind }}",
+//	"EventReason": "{{ .Reason }}",
+//	"EventTime": "{{ .LastTimestamp }}",
+//	"EventMessage": "{{ .Message }}"
+//}`
 )
 
 type WebHookSink struct {
@@ -51,30 +49,47 @@ func (ws *WebHookSink) Name() string {
 }
 
 func (ws *WebHookSink) ExportEvents(batch *core.EventBatch) {
-	for _, event := range batch.Events {
-		err := ws.Send(event)
-		if err != nil {
-			klog.Warningf("Failed to send event to WebHook sink,because of %v", err)
-		}
-		time.Sleep(50 * time.Millisecond)
+	if len(batch.Events) == 0 {
+		return
 	}
+
+	var events []*v1.Event
+	for _, event := range batch.Events {
+		for k, v := range ws.filters {
+			if !v.Filter(event) {
+				klog.Errorf("filter because %v", k)
+				continue
+			}
+		}
+		events = append(events, event)
+	}
+
+	err := ws.Send(events)
+	if err != nil {
+		klog.Warningf("Failed to send event to WebHook sink,because of %v", err)
+	}
+
+}
+
+func getEventValue(event []*v1.Event) ([]byte, error) {
+	// TODO: check whether indenting is required.
+	b, err := json.MarshalIndent(event, "", " ")
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
 }
 
 // send msg to generic webHook
-func (ws *WebHookSink) Send(event *v1.Event) (err error) {
-	for _, v := range ws.filters {
-		if !v.Filter(event) {
-			return
-		}
-	}
+func (ws *WebHookSink) Send(event []*v1.Event) (err error) {
 
-	body, err := ws.RenderBodyTemplate(event)
+	body, err := getEventValue(event)
 	if err != nil {
 		klog.Errorf("Failed to RenderBodyTemplate,because of %v", err)
 		return err
 	}
 
-	bodyBuffer := bytes.NewBuffer([]byte(body))
+	bodyBuffer := bytes.NewBuffer(body)
 	req, err := http.NewRequest(ws.method, ws.endpoint, bodyBuffer)
 
 	// append header to http request
@@ -142,9 +157,9 @@ func getLevels(level string) []string {
 func NewWebHookSink(uri *url.URL) (*WebHookSink, error) {
 	s := &WebHookSink{
 		// default http method
-		method:       http.MethodGet,
-		bodyTemplate: defaultBodyTemplate,
-		filters:      make(map[string]filters.Filter),
+		method: http.MethodGet,
+		//bodyTemplate: defaultBodyTemplate,
+		filters: make(map[string]filters.Filter),
 	}
 
 	if len(uri.Host) > 0 {
@@ -163,11 +178,11 @@ func NewWebHookSink(uri *url.URL) (*WebHookSink, error) {
 	// set header of webHook
 	s.headerMap = parseHeaders(opts["header"])
 
-	level := Warning
+	level := Normal
 	if len(opts["level"]) >= 1 {
 		level = opts["level"][0]
-		s.filters["LevelFilter"] = filters.NewGenericFilter("Type", getLevels(level), false)
 	}
+	s.filters["LevelFilter"] = filters.NewGenericFilter("Type", getLevels(level), false)
 
 	if len(opts["namespaces"]) >= 1 {
 		// namespace filter doesn't support regexp
@@ -188,35 +203,35 @@ func NewWebHookSink(uri *url.URL) (*WebHookSink, error) {
 		s.filters["ReasonsFilter"] = filters.NewGenericFilter("Reason", reasons, true)
 	}
 
-	if len(opts["custom_body_configmap"]) >= 1 {
-		s.bodyConfigMapName = opts["custom_body_configmap"][0]
-
-		if len(opts["custom_body_configmap_namespace"]) >= 1 {
-			s.bodyConfigMapNamespace = opts["custom_body_configmap_namespace"][0]
-		} else {
-			s.bodyConfigMapNamespace = "default"
-		}
-
-		client, err := kubernetes.GetKubernetesClient(nil)
-		if err != nil {
-			klog.Warningf("Failed to get kubernetes client and use default bodyTemplate instead")
-			s.bodyTemplate = defaultBodyTemplate
-			return s, nil
-		}
-		configmap, err := client.CoreV1().ConfigMaps(s.bodyConfigMapNamespace).Get(s.bodyConfigMapName, metav1.GetOptions{})
-		if err != nil {
-			klog.Warningf("Failed to get configMap %s in namespace %s and use default bodyTemplate instead,because of %v", s.bodyConfigMapName, s.bodyConfigMapNamespace, err)
-			s.bodyTemplate = defaultBodyTemplate
-			return s, nil
-		}
-		if content, ok := configmap.Data["content"]; !ok {
-			klog.Warningf("Failed to get configMap content and use default bodyTemplate instead,because of %v", err)
-			s.bodyTemplate = defaultBodyTemplate
-			return s, nil
-		} else {
-			s.bodyTemplate = content
-		}
-	}
+	//if len(opts["custom_body_configmap"]) >= 1 {
+	//	s.bodyConfigMapName = opts["custom_body_configmap"][0]
+	//
+	//	if len(opts["custom_body_configmap_namespace"]) >= 1 {
+	//		s.bodyConfigMapNamespace = opts["custom_body_configmap_namespace"][0]
+	//	} else {
+	//		s.bodyConfigMapNamespace = "default"
+	//	}
+	//
+	//	client, err := kubernetes.GetKubernetesClient(nil)
+	//	if err != nil {
+	//		klog.Warningf("Failed to get kubernetes client and use default bodyTemplate instead")
+	//		s.bodyTemplate = defaultBodyTemplate
+	//		return s, nil
+	//	}
+	//	configmap, err := client.CoreV1().ConfigMaps(s.bodyConfigMapNamespace).Get(s.bodyConfigMapName, metav1.GetOptions{})
+	//	if err != nil {
+	//		klog.Warningf("Failed to get configMap %s in namespace %s and use default bodyTemplate instead,because of %v", s.bodyConfigMapName, s.bodyConfigMapNamespace, err)
+	//		s.bodyTemplate = defaultBodyTemplate
+	//		return s, nil
+	//	}
+	//	if content, ok := configmap.Data["content"]; !ok {
+	//		klog.Warningf("Failed to get configMap content and use default bodyTemplate instead,because of %v", err)
+	//		s.bodyTemplate = defaultBodyTemplate
+	//		return s, nil
+	//	} else {
+	//		s.bodyTemplate = content
+	//	}
+	//}
 
 	return s, nil
 }

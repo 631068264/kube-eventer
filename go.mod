@@ -9,9 +9,9 @@ require (
 	github.com/aws/aws-sdk-go v1.34.28
 	github.com/denverdino/aliyungo v0.0.0-20190410085603-611ead8a6fed
 	github.com/go-sql-driver/mysql v1.5.0
-	github.com/golang/protobuf v1.3.2
+	github.com/golang/protobuf v1.5.2
 	github.com/google/cadvisor v0.33.1
-	github.com/google/uuid v1.1.1
+	github.com/google/uuid v1.1.2
 	github.com/imdario/mergo v0.3.7 // indirect
 	github.com/influxdata/influxdb v1.7.7
 	github.com/mailru/easyjson v0.7.0 // indirect
@@ -22,13 +22,13 @@ require (
 	github.com/riemann/riemann-go-client v0.4.0
 	github.com/smartystreets/go-aws-auth v0.0.0-20180515143844-0c1422d1fdb9
 	github.com/smartystreets/gunit v1.0.0 // indirect
-	github.com/stretchr/testify v1.6.1
+	github.com/stretchr/testify v1.7.0
 	go.mongodb.org/mongo-driver v1.5.1
 	gopkg.in/olivere/elastic.v3 v3.0.75
 	gopkg.in/olivere/elastic.v5 v5.0.81
 	gopkg.in/olivere/elastic.v6 v6.2.23
-	k8s.io/api v0.17.4
-	k8s.io/apimachinery v0.17.4
-	k8s.io/client-go v0.17.4
+	k8s.io/api v0.23.3
+	k8s.io/apimachinery v0.23.3
+	k8s.io/client-go v0.23.3
 	k8s.io/klog v1.0.0
 )
